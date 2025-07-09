@@ -5,13 +5,31 @@
 📁 **Fichiers HTML analysés** :
 - ./index.html
 
-❌ **Plusieurs erreurs de validation détectées** (Score: 1/3)
-Votre code contient  erreur(s).
+⚠️ **Erreurs dans ./index.html** :
+```
+
+/home/runner/work/test-html-template2/test-html-template2/index.html
+  26:1  error  Trailing whitespace  no-trailing-whitespace
+
+✖ 1 problem (1 error, 0 warnings)
+
+More information:
+  https://html-validate.org/rules/no-trailing-whitespace.html
+
+```
+⚠️ **Quelques erreurs de validation détectées** (Score: 2/3)
+Votre code contient 2 erreur(s).
 
 ## 🔧 Solutions aux erreurs de validation détectées :
 
-✅ **Aucune erreur de validation spécifique détectée !**
-Votre code HTML semble bien structuré.
+### 🧹 **Problème de formatage : Espaces en fin de ligne**
+
+**Problème détecté :** Espaces inutiles à la fin des lignes
+
+**Solution :** Supprimer les espaces en fin de ligne
+- Dans VS Code : Rechercher avec regex `[[:space:]]+$` et remplacer par rien
+- Ou configurer VS Code pour supprimer automatiquement les espaces
+
 
 ## Analyse de la qualité du code :
 
@@ -21,20 +39,28 @@ Votre code HTML semble bien structuré.
 - ✅ Déclaration DOCTYPE HTML5 présente
 - ✅ Attribut lang défini pour l'accessibilité
 - ✅ Encodage de caractères spécifié
-- ✅ Meta viewport présent (responsive design)
+- ✅ Utilisation de balises sémantiques (`<header>`)
+- ✅ Utilisation de balises sémantiques (`<main>`)
+- ✅ Utilisation de balises sémantiques (`<footer>`)
+- ✅ Utilisation de balises sémantiques (`<section>`)
 - ✅ Titre de page défini
 
 #### ⚠️ **Points à améliorer** :
 - ⚠️ Balise obsolète détectée : `<b>` (utiliser CSS à la place)
+- ⚠️ Balise obsolète détectée : `<i>` (utiliser CSS à la place)
+- ⚠️ Balise obsolète détectée : `<u>` (utiliser CSS à la place)
+- ℹ️ Considérer l'ajout d'attributs title aux liens pour l'accessibilité
 
 ## Vérification détaillée des images :
 
-ℹ️ Aucune image trouvée dans les fichiers HTML.
+🖼️ **Images dans ./index.html** :
+  ✅ Image avec attribut alt : `<img src="https://upload.wikimedia.org/wikipedia/commons/d/d2/Dr._Norman_Borlaug.jpg" alt="Portrait de Norman Borlaug" width="300">`
+
 
 ## 💡 Recommandations personnalisées :
 
 ### Actions prioritaires :
-✅ Aucune action prioritaire nécessaire !
+- 📱 **Recommandé** : Ajouter la meta viewport dans `./index.html` pour le responsive
 
 
 ---
@@ -45,28 +71,29 @@ Votre code HTML semble bien structuré.
 
 ### 📄 Évaluation de `./index.html` :
 
-📏 **Nombre de lignes de code :** 10 lignes
+📏 **Nombre de lignes de code :** 47 lignes
 
-⚠️ **Attention :** Travail incomplet (moins de 30 lignes). Note limitée à 6/12 maximum.
+✅ **Longueur appropriée :** Respect des contraintes (30-80 lignes).
 
 ### 🏗️ **Critère 1 : Structure HTML** (/3 points)
 
-❌ Balise `<header>` manquante (0 point)
-❌ Balise `<main>` manquante (0 point)
-❌ Balise `<footer>` manquante (0 point)
-**Score Structure HTML : 0/3**
+✅ Balise `<header>` présente (+1 point)
+✅ Balise `<main>` présente (+1 point)
+✅ Balise `<footer>` présente (+1 point)
+**Score Structure HTML : 3/3**
 
 ### 🎯 **Critère 2 : Éléments requis de l'exercice** (/3 points)
 
-❌ Image avec légende manquante (`<figure>` + `<figcaption>`) (0 point)
-❌ Liste d'accomplissements manquante (0 point)
-❌ Citation ou lien externe manquant (0 point)
-**Score Éléments requis : 0/3**
+✅ Image avec légende (`<figure>` + `<figcaption>`) (+1 point)
+✅ Liste d'accomplissements présente (`<ul>` ou `<ol>`) (+1 point)
+✅ Citation (`<blockquote>`) et lien externe présents (+1 point)
+**Score Éléments requis : 3/3**
 
 ### 🏷️ **Critère 3 : Balises sémantiques** (/3 points)
 
-❌ **Aucune balise sémantique avancée détectée (0 point)**
-**Score Balises sémantiques : 0/3**
+✅ Excellente utilisation de `<section>` avec titres hiérarchiques
+**Excellent usage des balises sémantiques (+3 points)**
+**Score Balises sémantiques : 3/3**
 
 ### ✅ **Critère 4 : Validation HTML** (/3 points)
 
@@ -77,14 +104,14 @@ Votre code HTML semble bien structuré.
 
 | Critère | Points obtenus | Points max |
 |---------|----------------|------------|
-| Structure HTML | 0 | 3 |
-| Éléments requis | 0 | 3 |
-| Balises sémantiques | 0 | 3 |
+| Structure HTML | 3 | 3 |
+| Éléments requis | 3 | 3 |
+| Balises sémantiques | 3 | 3 |
 | Validation HTML | 2 | 3 |
-| **TOTAL** | **2** | **12** |
+| **TOTAL** | **11** | **12** |
 
-## 📋 **Statut du travail :** ❌ NON VALIDÉ
-**Raison :** Travail incomplet (moins de 30 lignes requises)
+## 📋 **Statut du travail :** ✅ VALIDÉ
+**Félicitations !** Votre travail respecte les consignes de l'exercice.
 
 ## 📚 Guide de résolution des erreurs courantes :
 
