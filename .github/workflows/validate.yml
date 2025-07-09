@@ -1,0 +1,721 @@
+name: Validate HTML
+
+on:
+  push:
+    paths:
+      - '**.html'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install HTML validator
+        run: |
+          echo "Installation de html-validate..."
+          npm install -g html-validate || {
+            echo "Échec de l'installation de html-validate, installation d'une alternative..."
+            npm install -g htmlhint
+          }
+
+      - name: Run HTML validation
+        run: |
+          echo "# Feedback Automatisé" > feedback.md
+          echo "" >> feedback.md
+          echo "## Résultats de la validation HTML :" >> feedback.md
+          echo "" >> feedback.md
+          
+          # Chercher tous les fichiers HTML
+          html_files=$(find . -name "*.html" -not -path "./.git/*")
+
+          # Initialiser le score de validation global
+          validation_score=3  # Score par défaut maximum
+
+          if [ -z "$html_files" ]; then
+            echo "❌ Aucun fichier HTML trouvé dans le repository." >> feedback.md
+            validation_score=0
+          else
+            echo "📁 **Fichiers HTML analysés** :" >> feedback.md
+            for file in $html_files; do
+              echo "- $file" >> feedback.md
+            done
+            echo "" >> feedback.md
+            
+            # Debug: vérifier que html-validate est installé
+            echo "Debug: Vérification de html-validate..."
+            if command -v html-validate >/dev/null 2>&1; then
+              echo "Debug: html-validate trouvé, utilisation..."
+              for file in $html_files; do
+                echo "Debug: Analyse de $file avec html-validate..."
+                if html-validate "$file" > "validation_${file##*/}.tmp" 2>&1; then
+                  if [ -s "validation_${file##*/}.tmp" ]; then
+                    echo "⚠️ **Erreurs dans $file** :" >> feedback.md
+                    echo '```' >> feedback.md
+                    cat "validation_${file##*/}.tmp" >> feedback.md
+                    echo '```' >> feedback.md
+                    # Compter les erreurs dans ce fichier
+                    file_errors=$(grep -c "error\|Error\|ERROR" "validation_${file##*/}.tmp" 2>/dev/null || echo "1")
+                    total_errors=$((total_errors + file_errors))
+                  fi
+                else
+                  echo "⚠️ **Erreurs dans $file** :" >> feedback.md
+                  echo '```' >> feedback.md
+                  cat "validation_${file##*/}.tmp" >> feedback.md
+                  echo '```' >> feedback.md
+                  file_errors=$(grep -c "error\|Error\|ERROR" "validation_${file##*/}.tmp" 2>/dev/null || echo "1")
+                  total_errors=$((total_errors + file_errors))
+                fi
+                rm -f "validation_${file##*/}.tmp"
+              done
+            elif command -v htmlhint >/dev/null 2>&1; then
+              echo "Debug: html-validate non trouvé, utilisation de htmlhint..."
+              for file in $html_files; do
+                echo "Debug: Analyse de $file avec htmlhint..."
+                if ! htmlhint "$file" > "validation_${file##*/}.tmp" 2>&1; then
+                  echo "⚠️ **Erreurs dans $file** :" >> feedback.md
+                  echo '```' >> feedback.md
+                  cat "validation_${file##*/}.tmp" >> feedback.md
+                  echo '```' >> feedback.md
+                  file_errors=$(grep -c "error\|Error\|ERROR" "validation_${file##*/}.tmp" 2>/dev/null || echo "1")
+                  total_errors=$((total_errors + file_errors))
+                fi
+                rm -f "validation_${file##*/}.tmp"
+              done
+            else
+              echo "⚠️ **Validation basique** : Aucun validateur HTML installé" >> feedback.md
+              total_errors=0
+            fi
+            
+            # Vérifications manuelles supplémentaires
+            for file in $html_files; do
+              # Vérifier images sans alt
+              if grep -q '<img' "$file" && ! grep -q '<img[^>]*alt=' "$file"; then
+                total_errors=$((total_errors + 1))
+              fi
+              
+              # Vérifier balises non fermées
+              if grep -q '<p>' "$file"; then
+                p_open=$(grep -c '<p>' "$file" 2>/dev/null || echo "0")
+                p_close=$(grep -c '</p>' "$file" 2>/dev/null || echo "0")
+                if [ "$p_open" -gt "$p_close" ]; then
+                  total_errors=$((total_errors + 1))
+                fi
+              fi
+            done
+            
+            # Calculer le score final de validation
+            if [ "$total_errors" -eq 0 ]; then
+              validation_score=3
+              echo "✅ **Aucune erreur de validation HTML détectée !**" >> feedback.md
+              echo "Votre code HTML semble correct." >> feedback.md
+            elif [ "$total_errors" -le 2 ]; then
+              validation_score=2
+              echo "⚠️ **Quelques erreurs de validation détectées** (Score: 2/3)" >> feedback.md
+              echo "Votre code contient $total_errors erreur(s)." >> feedback.md
+            else
+              validation_score=1
+              echo "❌ **Plusieurs erreurs de validation détectées** (Score: 1/3)" >> feedback.md
+              echo "Votre code contient $total_errors erreur(s)." >> feedback.md
+            fi
+            
+            # Sauvegarder le score dans un fichier pour les étapes suivantes
+            echo "$validation_score" > validation_score.tmp
+          fi
+          echo "" >> feedback.md
+
+      - name: Analyze validation errors and provide solutions
+        run: |
+          echo "## 🔧 Solutions aux erreurs de validation détectées :" >> feedback.md
+          echo "" >> feedback.md
+          
+          html_files=$(find . -name "*.html" -not -path "./.git/*")
+          solutions_provided=false
+          
+          for file in $html_files; do
+            # Analyser le contenu pour détecter des problèmes spécifiques
+            
+            # 1. Images sans alt
+            if grep -q '<img[^>]*>' "$file" && ! grep -q '<img[^>]*alt=' "$file"; then
+              echo "### ♿ **Erreur d'accessibilité : Images sans attribut alt**" >> feedback.md
+              echo "" >> feedback.md
+              echo "**Problème détecté :** \`<img>\` sans attribut \`alt\`" >> feedback.md
+              echo "" >> feedback.md
+              echo "**Solution :**" >> feedback.md
+              echo '```html' >> feedback.md
+              echo "<!-- ❌ Erreur actuelle -->" >> feedback.md
+              grep -o '<img[^>]*>' "$file" | head -1 >> feedback.md
+              echo "" >> feedback.md
+              echo "<!-- ✅ Correction -->" >> feedback.md
+              img_line=$(grep -o '<img[^>]*>' "$file" | head -1)
+              corrected_img=$(echo "$img_line" | sed 's/>/ alt="Description de l'\''image">/')
+              echo "$corrected_img" >> feedback.md
+              echo '```' >> feedback.md
+              echo "" >> feedback.md
+              solutions_provided=true
+            fi
+            
+            # 2. Balises non fermées
+            if grep -q '<p>' "$file"; then
+              # Vérifier s'il y a des <p> potentiellement non fermés
+              p_open=$(grep -c '<p>' "$file" 2>/dev/null || echo "0")
+              p_close=$(grep -c '</p>' "$file" 2>/dev/null || echo "0")
+              if [ "$p_open" -gt "$p_close" ]; then
+                echo "### 🔗 **Erreur de structure : Balise \`<p>\` non fermée**" >> feedback.md
+                echo "" >> feedback.md
+                echo "**Problème détecté :** Balise \`<p>\` ouverte mais pas fermée correctement" >> feedback.md
+                echo "" >> feedback.md
+                echo "**Solution :** Ajouter la balise de fermeture \`</p>\`" >> feedback.md
+                echo '```html' >> feedback.md
+                echo "<!-- ❌ Erreur -->" >> feedback.md
+                echo "<p>" >> feedback.md
+                echo "  Votre texte..." >> feedback.md
+                echo "<!-- Pas de fermeture -->" >> feedback.md
+                echo "" >> feedback.md
+                echo "<!-- ✅ Correction -->" >> feedback.md
+                echo "<p>" >> feedback.md
+                echo "  Votre texte..." >> feedback.md
+                echo "</p>" >> feedback.md
+                echo '```' >> feedback.md
+                echo "" >> feedback.md
+                solutions_provided=true
+              fi
+            fi
+            
+            # 3. Balises li non fermées
+            if grep -q '<li>' "$file"; then
+              li_open=$(grep -c '<li>' "$file" 2>/dev/null || echo "0")
+              li_close=$(grep -c '</li>' "$file" 2>/dev/null || echo "0")
+              if [ "$li_open" -gt "$li_close" ]; then
+                echo "### 📝 **Erreur de liste : Balise \`<li>\` non fermée**" >> feedback.md
+                echo "" >> feedback.md
+                echo "**Problème détecté :** Élément de liste sans balise de fermeture" >> feedback.md
+                echo "" >> feedback.md
+                echo "**Solution :** Ajouter \`</li>\` à chaque élément" >> feedback.md
+                echo '```html' >> feedback.md
+                echo "<!-- ❌ Erreur -->" >> feedback.md
+                echo "<ul>" >> feedback.md
+                echo "  <li>Premier élément" >> feedback.md
+                echo "  <li>Deuxième élément</li>" >> feedback.md
+                echo "</ul>" >> feedback.md
+                echo "" >> feedback.md
+                echo "<!-- ✅ Correction -->" >> feedback.md
+                echo "<ul>" >> feedback.md
+                echo "  <li>Premier élément</li>" >> feedback.md
+                echo "  <li>Deuxième élément</li>" >> feedback.md
+                echo "</ul>" >> feedback.md
+                echo '```' >> feedback.md
+                echo "" >> feedback.md
+                solutions_provided=true
+              fi
+            fi
+            
+            # 4. Balises blockquote non fermées
+            if grep -q '<blockquote>' "$file"; then
+              bq_open=$(grep -c '<blockquote>' "$file" 2>/dev/null || echo "0")
+              bq_close=$(grep -c '</blockquote>' "$file" 2>/dev/null || echo "0")
+              if [ "$bq_open" -gt "$bq_close" ]; then
+                echo "### 💬 **Erreur de citation : Balise \`<blockquote>\` non fermée**" >> feedback.md
+                echo "" >> feedback.md
+                echo "**Problème détecté :** Citation ouverte mais pas fermée" >> feedback.md
+                echo "" >> feedback.md
+                echo "**Solution :** Ajouter \`</blockquote>\` avant la fermeture du conteneur" >> feedback.md
+                echo '```html' >> feedback.md
+                echo "<!-- ❌ Erreur -->" >> feedback.md
+                echo "<footer>" >> feedback.md
+                echo "  <blockquote>" >> feedback.md
+                echo "    \"Votre citation...\"" >> feedback.md
+                echo "  <!-- Manque </blockquote> -->" >> feedback.md
+                echo "</footer>" >> feedback.md
+                echo "" >> feedback.md
+                echo "<!-- ✅ Correction -->" >> feedback.md
+                echo "<footer>" >> feedback.md
+                echo "  <blockquote>" >> feedback.md
+                echo "    \"Votre citation...\"" >> feedback.md
+                echo "  </blockquote>" >> feedback.md
+                echo "</footer>" >> feedback.md
+                echo '```' >> feedback.md
+                echo "" >> feedback.md
+                solutions_provided=true
+              fi
+            fi
+            
+            # 5. Espaces en fin de ligne
+            if grep -q '[[:space:]]$' "$file"; then
+              echo "### 🧹 **Problème de formatage : Espaces en fin de ligne**" >> feedback.md
+              echo "" >> feedback.md
+              echo "**Problème détecté :** Espaces inutiles à la fin des lignes" >> feedback.md
+              echo "" >> feedback.md
+              echo "**Solution :** Supprimer les espaces en fin de ligne" >> feedback.md
+              echo "- Dans VS Code : Rechercher avec regex \`[[:space:]]+$\` et remplacer par rien" >> feedback.md
+              echo "- Ou configurer VS Code pour supprimer automatiquement les espaces" >> feedback.md
+              echo "" >> feedback.md
+              solutions_provided=true
+            fi
+          done
+          
+          if [ "$solutions_provided" = false ]; then
+            echo "✅ **Aucune erreur de validation spécifique détectée !**" >> feedback.md
+            echo "Votre code HTML semble bien structuré." >> feedback.md
+          fi
+          echo "" >> feedback.md
+
+      - name: Analyze HTML code quality
+        run: |
+          echo "## Analyse de la qualité du code :" >> feedback.md
+          echo "" >> feedback.md
+          
+          html_files=$(find . -name "*.html" -not -path "./.git/*")
+          
+          for file in $html_files; do
+            echo "### 📄 Analyse de \`$file\` :" >> feedback.md
+            echo "" >> feedback.md
+            
+            # Points forts
+            echo "#### ✅ **Points forts détectés** :" >> feedback.md
+            
+            # Vérifier DOCTYPE
+            if grep -q "<!DOCTYPE html>" "$file"; then
+              echo "- ✅ Déclaration DOCTYPE HTML5 présente" >> feedback.md
+            fi
+            
+            # Vérifier lang
+            if grep -q '<html.*lang=' "$file"; then
+              echo "- ✅ Attribut lang défini pour l'accessibilité" >> feedback.md
+            fi
+            
+            # Vérifier charset
+            if grep -q 'charset=' "$file"; then
+              echo "- ✅ Encodage de caractères spécifié" >> feedback.md
+            fi
+            
+            # Vérifier viewport
+            if grep -q 'viewport' "$file"; then
+              echo "- ✅ Meta viewport présent (responsive design)" >> feedback.md
+            fi
+            
+            # Vérifier balises sémantiques
+            semantic_tags=("header" "main" "footer" "nav" "section" "article" "aside")
+            for tag in "${semantic_tags[@]}"; do
+              if grep -q "<$tag" "$file"; then
+                echo "- ✅ Utilisation de balises sémantiques (\`<$tag>\`)" >> feedback.md
+              fi
+            done
+            
+            # Vérifier structure de base
+            if grep -q "<title>" "$file"; then
+              echo "- ✅ Titre de page défini" >> feedback.md
+            fi
+            
+            echo "" >> feedback.md
+            
+            # Points à améliorer
+            echo "#### ⚠️ **Points à améliorer** :" >> feedback.md
+            
+            issues_found=false
+            
+            # Vérifier images sans alt
+            if grep -q '<img' "$file" && ! grep -q '<img[^>]*alt=' "$file"; then
+              echo "- ⚠️ Images sans attribut alt détectées" >> feedback.md
+              issues_found=true
+            fi
+            
+            # Vérifier balises obsolètes
+            obsolete_tags=("font" "center" "b" "i" "u")
+            for tag in "${obsolete_tags[@]}"; do
+              if grep -q "<$tag" "$file"; then
+                echo "- ⚠️ Balise obsolète détectée : \`<$tag>\` (utiliser CSS à la place)" >> feedback.md
+                issues_found=true
+              fi
+            done
+            
+            # Vérifier styles inline
+            if grep -q 'style=' "$file"; then
+              echo "- ⚠️ Styles inline détectés (considérer l'externalisation CSS)" >> feedback.md
+              issues_found=true
+            fi
+            
+            # Vérifier liens sans title ou texte descriptif
+            if grep -q '<a.*href.*>' "$file"; then
+              if ! grep -q '<a.*title=' "$file"; then
+                echo "- ℹ️ Considérer l'ajout d'attributs title aux liens pour l'accessibilité" >> feedback.md
+                issues_found=true
+              fi
+            fi
+            
+            if [ "$issues_found" = false ]; then
+              echo "- ✅ Aucun problème majeur détecté dans ce fichier !" >> feedback.md
+            fi
+            
+            echo "" >> feedback.md
+          done
+
+      - name: Check for alt attributes in images
+        run: |
+          echo "## Vérification détaillée des images :" >> feedback.md
+          echo "" >> feedback.md
+          
+          # Chercher les images dans les fichiers HTML
+          html_files=$(find . -name "*.html" -not -path "./.git/*")
+          images_found=false
+          
+          for file in $html_files; do
+            if grep -q '<img' "$file" 2>/dev/null; then
+              images_found=true
+              echo "🖼️ **Images dans $file** :" >> feedback.md
+              
+              # Extraire toutes les balises img et les traiter
+              grep -o '<img[^>]*>' "$file" > img_temp.txt
+              while IFS= read -r img_tag; do
+                if echo "$img_tag" | grep -q 'alt='; then
+                  echo "  ✅ Image avec attribut alt : \`$img_tag\`" >> feedback.md
+                else
+                  echo "  ❌ **Image sans attribut alt** : \`$img_tag\`" >> feedback.md
+                  echo "    💡 **Suggestion** : Ajouter \`alt=\"Description de l'image\"\`" >> feedback.md
+                fi
+              done < img_temp.txt
+              rm -f img_temp.txt
+              echo "" >> feedback.md
+            fi
+          done
+          
+          if [ "$images_found" = false ]; then
+            echo "ℹ️ Aucune image trouvée dans les fichiers HTML." >> feedback.md
+          fi
+          echo "" >> feedback.md
+
+      - name: Generate personalized recommendations  
+        run: |
+          echo "## 💡 Recommandations personnalisées :" >> feedback.md
+          echo "" >> feedback.md
+          echo "### Actions prioritaires :" >> feedback.md
+          
+          html_files=$(find . -name "*.html" -not -path "./.git/*")
+          priority_actions=false
+          
+          for file in $html_files; do
+            if grep -q '<img' "$file" && ! grep -q 'alt=' "$file"; then
+              echo "- ♿ **Urgent** : Ajouter des attributs \`alt\` aux images dans \`$file\`" >> feedback.md
+              priority_actions=true
+            fi
+            
+            if ! grep -q 'viewport' "$file"; then
+              echo "- 📱 **Recommandé** : Ajouter la meta viewport dans \`$file\` pour le responsive" >> feedback.md
+              priority_actions=true
+            fi
+          done
+          
+          if [ "$priority_actions" = false ]; then
+            echo "✅ Aucune action prioritaire nécessaire !" >> feedback.md
+          fi
+          echo "" >> feedback.md
+
+      - name: Pedagogical evaluation and grading
+        run: |
+          # Attendre un peu pour éviter les conflits de fichier
+          sleep 1
+          
+          # Créer une nouvelle section d'évaluation
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "# 🎓 Évaluation Pédagogique - Exercice Norman Borlaug"
+            echo ""
+            echo "## 📋 Analyse du travail rendu :"
+            echo ""
+          } >> feedback.md
+          
+          html_files=$(find . -name "*.html" -not -path "./.git/*")
+          
+          for file in $html_files; do
+            {
+              echo "### 📄 Évaluation de \`$file\` :"
+              echo ""
+              
+              # Compter les lignes de code
+              line_count=$(wc -l < "$file")
+              echo "📏 **Nombre de lignes de code :** $line_count lignes"
+              echo ""
+              
+              # Vérifier les contraintes de longueur
+              if [ "$line_count" -lt 30 ]; then
+                echo "⚠️ **Attention :** Travail incomplet (moins de 30 lignes). Note limitée à 6/12 maximum."
+                max_score=6
+              elif [ "$line_count" -gt 80 ]; then
+                echo "ℹ️ **Information :** Code très long (plus de 80 lignes). Vérifiez la concision."
+                max_score=12
+              else
+                echo "✅ **Longueur appropriée :** Respect des contraintes (30-80 lignes)."
+                max_score=12
+              fi
+              echo ""
+            } >> feedback.md
+            
+            # CRITÈRE 1: Structure HTML
+            structure_score=0
+            {
+              echo "### 🏗️ **Critère 1 : Structure HTML** (/3 points)"
+              echo ""
+            } >> feedback.md
+            
+            if grep -q "<header>" "$file"; then
+              echo "✅ Balise \`<header>\` présente (+1 point)" >> feedback.md
+              structure_score=$((structure_score + 1))
+            else
+              echo "❌ Balise \`<header>\` manquante (0 point)" >> feedback.md
+            fi
+            
+            if grep -q "<main>" "$file"; then
+              echo "✅ Balise \`<main>\` présente (+1 point)" >> feedback.md
+              structure_score=$((structure_score + 1))
+            else
+              echo "❌ Balise \`<main>\` manquante (0 point)" >> feedback.md
+            fi
+            
+            if grep -q "<footer>" "$file"; then
+              echo "✅ Balise \`<footer>\` présente (+1 point)" >> feedback.md
+              structure_score=$((structure_score + 1))
+            else
+              echo "❌ Balise \`<footer>\` manquante (0 point)" >> feedback.md
+            fi
+            
+            {
+              echo "**Score Structure HTML : $structure_score/3**"
+              echo ""
+            } >> feedback.md
+            
+            # CRITÈRE 2: Éléments requis
+            elements_score=0
+            {
+              echo "### 🎯 **Critère 2 : Éléments requis de l'exercice** (/3 points)"
+              echo ""
+            } >> feedback.md
+            
+            # Vérifier figure + figcaption
+            if grep -q "<figure>" "$file" && grep -q "<figcaption>" "$file"; then
+              echo "✅ Image avec légende (\`<figure>\` + \`<figcaption>\`) (+1 point)" >> feedback.md
+              elements_score=$((elements_score + 1))
+            else
+              echo "❌ Image avec légende manquante (\`<figure>\` + \`<figcaption>\`) (0 point)" >> feedback.md
+            fi
+            
+            # Vérifier liste
+            if grep -q "<ul>" "$file" || grep -q "<ol>" "$file"; then
+              echo "✅ Liste d'accomplissements présente (\`<ul>\` ou \`<ol>\`) (+1 point)" >> feedback.md
+              elements_score=$((elements_score + 1))
+            else
+              echo "❌ Liste d'accomplissements manquante (0 point)" >> feedback.md
+            fi
+            
+            # Vérifier blockquote + lien
+            if grep -q "<blockquote>" "$file" && grep -q "<a.*href.*>" "$file"; then
+              echo "✅ Citation (\`<blockquote>\`) et lien externe présents (+1 point)" >> feedback.md
+              elements_score=$((elements_score + 1))
+            else
+              echo "❌ Citation ou lien externe manquant (0 point)" >> feedback.md
+            fi
+            
+            {
+              echo "**Score Éléments requis : $elements_score/3**"
+              echo ""
+            } >> feedback.md
+            
+            # CRITÈRE 3: Balises sémantiques
+            semantic_score=0
+            semantic_count=0
+            {
+              echo "### 🏷️ **Critère 3 : Balises sémantiques** (/3 points)"
+              echo ""
+            } >> feedback.md
+            
+           if grep -q "<section>" "$file" && grep -q "<h[2-6]>" "$file"; then
+              # Vérifier si les titres sont bien dans des sections
+              sections_with_titles=$(grep -c "<section>" "$file" 2>/dev/null || echo "0")
+              if [ "$sections_with_titles" -gt 0 ]; then
+                echo "✅ Excellente utilisation de \`<section>\` avec titres hiérarchiques" >> feedback.md
+                semantic_count=$((semantic_count + 3))
+              fi
+            fi
+
+            # Vérifier mauvaise utilisation de div avec titres
+            if grep -q "<div>" "$file" && grep -q "<h[2-6]>" "$file"; then
+              # Vérifier si des titres sont dans des divs au lieu de sections
+              echo "❌ Mauvaise utilisation de \`<div>\` avec titres - utiliser \`<section>\` à la place" >> feedback.md
+              semantic_count=$((semantic_count - 2))
+            fi
+
+
+            if grep -q "<article>" "$file"; then
+              echo "✅ Utilisation de \`<article>\`" >> feedback.md
+              semantic_count=$((semantic_count + 1))
+            fi
+            if grep -q "<nav>" "$file"; then
+              echo "✅ Utilisation de \`<nav>\`" >> feedback.md
+              semantic_count=$((semantic_count + 1))
+            fi
+            if grep -q "<aside>" "$file"; then
+              echo "✅ Utilisation de \`<aside>\`" >> feedback.md
+              semantic_count=$((semantic_count + 1))
+            fi
+            
+            # Attribution des points
+            if [ "$semantic_count" -ge 3 ]; then
+              semantic_score=3
+              echo "**Excellent usage des balises sémantiques (+3 points)**" >> feedback.md
+            elif [ "$semantic_count" -eq 2 ]; then
+              semantic_score=2
+              echo "**Bon usage des balises sémantiques (+2 points)**" >> feedback.md
+            elif [ "$semantic_count" -eq 1 ]; then
+              semantic_score=1
+              echo "**Usage basique des balises sémantiques (+1 point)**" >> feedback.md
+            else
+              semantic_score=0
+              echo "❌ **Aucune balise sémantique avancée détectée (0 point)**" >> feedback.md
+            fi
+            
+            {
+              echo "**Score Balises sémantiques : $semantic_score/3**"
+              echo ""
+            } >> feedback.md
+            
+            # CRITÈRE 4: Validation HTML
+            validation_score=2  # Score par défaut
+            {
+              echo "### ✅ **Critère 4 : Validation HTML** (/3 points)"
+              echo ""
+              echo "ℹ️ **Validation basique effectuée (+2 points)**"
+              echo "**Score Validation HTML : $validation_score/3**"
+              echo ""
+            } >> feedback.md
+            
+            # CALCUL FINAL
+            total_score=$((structure_score + elements_score + semantic_score + validation_score))
+            if [ "$total_score" -gt "$max_score" ]; then
+              total_score=$max_score
+            fi
+            
+            # RÉSUMÉ
+            {
+              echo "## 🔎 **Résumé des points obtenus :**"
+              echo ""
+              echo "| Critère | Points obtenus | Points max |"
+              echo "|---------|----------------|------------|"
+              echo "| Structure HTML | $structure_score | 3 |"
+              echo "| Éléments requis | $elements_score | 3 |"
+              echo "| Balises sémantiques | $semantic_score | 3 |"
+              echo "| Validation HTML | $validation_score | 3 |"
+              echo "| **TOTAL** | **$total_score** | **12** |"
+              echo ""
+            } >> feedback.md
+            
+            # STATUT
+            line_count=$(wc -l < "$file")
+            if [ "$line_count" -lt 30 ]; then
+              {
+                echo "## 📋 **Statut du travail :** ❌ NON VALIDÉ"
+                echo "**Raison :** Travail incomplet (moins de 30 lignes requises)"
+              } >> feedback.md
+            elif [ "$total_score" -ge 8 ]; then
+              {
+                echo "## 📋 **Statut du travail :** ✅ VALIDÉ"
+                echo "**Félicitations !** Votre travail respecte les consignes de l'exercice."
+              } >> feedback.md
+            else
+              {
+                echo "## � **Statut du travail :** ⚠️ À AMÉLIORER"
+                echo "**Note insuffisante.** Veuillez corriger les points mentionnés ci-dessus."
+              } >> feedback.md
+            fi
+            
+            echo "" >> feedback.md
+          done
+
+      - name: Add pedagogical feedback with code examples
+        run: |
+          cat >> feedback.md << 'EOF'
+          ## 📚 Guide de résolution des erreurs courantes :
+          
+          ### 🎯 **Erreurs fréquentes et leurs solutions** :
+          
+          #### 1. Erreur `wcag/h37` - Images sans attribut alt
+          **Cause :** L'attribut `alt` est obligatoire pour l'accessibilité
+          ```html
+          <!-- ❌ Problème -->
+          <img src="image.jpg">
+          
+          <!-- ✅ Solution -->
+          <img src="image.jpg" alt="Nelson Mandela souriant en 2008">
+          ```
+          
+          #### 2. Erreur `no-implicit-close` - Balises non fermées
+          **Cause :** HTML5 ferme automatiquement certaines balises, mais c'est une mauvaise pratique
+          ```html
+          <!-- ❌ Problème -->
+          <p>Texte
+          <h2>Titre</h2>
+          
+          <!-- ✅ Solution -->
+          <p>Texte</p>
+          <h2>Titre</h2>
+          ```
+          
+          #### 3. Erreur `close-order` - Ordre de fermeture incorrect
+          **Cause :** Les balises doivent être fermées dans l'ordre inverse d'ouverture
+          ```html
+          <!-- ❌ Problème -->
+          <footer>
+            <blockquote>
+              Citation...
+          </footer> <!-- blockquote jamais fermé -->
+          
+          <!-- ✅ Solution -->
+          <footer>
+            <blockquote>
+              Citation...
+            </blockquote>
+          </footer>
+          ```
+          
+          #### 4. Erreur `no-trailing-whitespace` - Espaces en fin de ligne
+          **Cause :** Espaces inutiles à la fin des lignes
+          **Solution :** Configurez votre éditeur pour supprimer automatiquement ces espaces
+          
+          ### 💡 **Conseils pour éviter ces erreurs** :
+          
+          - **Utilisez un éditeur avec coloration syntaxique** (VS Code, Sublime Text, etc.)
+          - **Activez l'auto-completion HTML** pour les balises de fermeture
+          - **Installez des extensions** comme "Auto Close Tag" dans VS Code
+          - **Utilisez l'indentation** pour visualiser la structure
+          - **Validez régulièrement** votre code pendant le développement
+          
+          ### 🔧 **Configuration VS Code recommandée** :
+          ```json
+          {
+            "files.trimTrailingWhitespace": true,
+            "editor.formatOnSave": true,
+            "html.autoClosingTags": true
+          }
+          ```
+          
+          EOF
+
+      - name: Commit feedback
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add feedback.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add automated feedback"
+            git push
+          fi
